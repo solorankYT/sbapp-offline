@@ -13,15 +13,6 @@ export interface NewTransaction {
   date: string
   isRecurring: boolean
 }
-export interface NewTransaction {
-  type: 'income' | 'expense'
-  amount: number
-  categoryId: string | null
-  accountId: string | null
-  description: string
-  date: string
-  isRecurring: boolean
-}
 
 export interface NewTransfer {
   fromAccountId: string
@@ -107,10 +98,12 @@ export function useTransactions(walletId: string | undefined) {
       category: null,
       account: null,
       toAccount: null,
+      goal: null,
       debt: null,
       profile: user ? { id: user.id, full_name: null, email: user.email ?? null } : null,
     }
   }
+  
 
   const transactionsWithPending = [...pending.map(toPendingDisplay), ...transactions]
 
