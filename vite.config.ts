@@ -19,16 +19,16 @@ export default defineConfig({
         background_color: '#faf9f5',
         display: 'standalone',
         start_url: '/',
-        icons: [
-          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
-        ],
+        icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' }],
       },
       workbox: {
-        // Precache the built app shell (JS/CSS/HTML) so the app itself opens
-        // with no network at all. This does NOT cache Supabase API calls —
-        // that's handled separately by the offline queue/cache below.
         globPatterns: ['**/*.{js,css,html,svg}'],
         navigateFallback: '/index.html',
+        // Force the new service worker to activate immediately instead of
+        // waiting for every open tab to close first — otherwise a fresh
+        // deploy silently does nothing until a second visit.
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
