@@ -16,6 +16,9 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
+import { OfflineBanner } from '@/features/transactions/OfflineBanner'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/Modal'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
@@ -46,6 +49,8 @@ const TRANSACTIONS_PER_PAGE = 15
 export function TransactionList() {
   const { user } = useAuth()
 
+
+
   const {
     currentWallet,
     loading: walletLoading,
@@ -55,14 +60,13 @@ export function TransactionList() {
   const { categories } = useCategories(currentWallet?.id)
   const { accounts } = useAccounts(currentWallet?.id)
 
-  const {
-    transactions,
-    loading,
-    addTransaction,
-    updateTransaction,
-    updateTransfer,
-    deleteTransaction,
-  } = useTransactions(currentWallet?.id)
+const { transactions, loading, addTransaction, updateTransaction, updateTransfer, deleteTransaction, syncPending, hasPending } =
+  useTransactions(currentWallet?.id)
+const isOnline = useOnlineStatus()
+
+useEffect(() => {
+  if (isOnline) syncPending()
+}, [isOnline])
 
   const { debts, updatePayment, deletePayment } = useDebts(currentWallet?.id)
   const [editingDebtPayment, setEditingDebtPayment] = useState<TransactionWithRelations | null>(null)
@@ -683,7 +687,14 @@ async function handleDelete(transaction: TransactionWithRelations) {
    */
 
   return (
+
+
+    // ===========================================================================  ===========================================================================  ===========================================================================  ===========================================================================
     <div className="pb-8">
+
+      <div className="mt-3">
+      <OfflineBanner pendingCount={transactions.filter((t) => t.id.startsWith('pending:')).length} onSync={syncPending} />
+    </div>
     
 
       {/* Search + Filters */}
