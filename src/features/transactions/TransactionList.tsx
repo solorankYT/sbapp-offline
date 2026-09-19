@@ -60,7 +60,7 @@ export function TransactionList() {
   const { categories } = useCategories(currentWallet?.id)
   const { accounts } = useAccounts(currentWallet?.id)
 
-const { transactions, loading, addTransaction, updateTransaction, updateTransfer, deleteTransaction, syncPending, hasPending } =
+const { transactions, loading, addTransaction, updateTransaction, updateTransfer, deleteTransaction, syncPending } =
   useTransactions(currentWallet?.id)
 const isOnline = useOnlineStatus()
 
