@@ -5,35 +5,32 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  plugins: 
-  [
-    react(), 
+  plugins: [
+    react(),
     tailwindcss(),
-     VitePWA({
+    VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Your Budgeting App',
-        short_name: 'Budget',
-        start_url: '/',
+        name: 'Ledger — Budgeting',
+        short_name: 'Ledger',
+        description: 'Personal and shared budgeting',
+        theme_color: '#1f6d52',
+        background_color: '#faf9f5',
         display: 'standalone',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        start_url: '/',
         icons: [
-          {
-            src: '/pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: '/pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
+          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
         ],
       },
-    })
-
+      workbox: {
+        // Precache the built app shell (JS/CSS/HTML) so the app itself opens
+        // with no network at all. This does NOT cache Supabase API calls —
+        // that's handled separately by the offline queue/cache below.
+        globPatterns: ['**/*.{js,css,html,svg}'],
+        navigateFallback: '/index.html',
+      },
+    }),
   ],
   resolve: {
     alias: {
