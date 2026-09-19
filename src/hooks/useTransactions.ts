@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { enqueueTransaction, getQueueForWallet, removeFromQueue, type QueuedTransaction } from '@/lib/offlineQueue'
 import type { TransactionWithRelations } from '@/types'
 
+export interface NewTransaction {
+  type: 'income' | 'expense'
+  amount: number
+  categoryId: string | null
+  accountId: string | null
+  description: string
+  date: string
+  isRecurring: boolean
+}
 export interface NewTransaction {
   type: 'income' | 'expense'
   amount: number
@@ -35,16 +45,19 @@ const SELECT_WITH_RELATIONS =
 export function useTransactions(walletId: string | undefined) {
   const { user } = useAuth()
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
+  const [pending, setPending] = useState<QueuedTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!walletId) {
       setTransactions([])
+      setPending([])
       setLoading(false)
       return
     }
 
+    setPending(getQueueForWallet(walletId))
     setLoading(true)
     setError(null)
 
@@ -57,6 +70,8 @@ export function useTransactions(walletId: string | undefined) {
       .limit(PAGE_SIZE)
 
     if (fetchError) {
+      // Likely offline — keep showing whatever we already had rather than
+      // clearing the list, and surface the pending queue so entry still works.
       setError(fetchError.message)
       setLoading(false)
       return
@@ -70,8 +85,43 @@ export function useTransactions(walletId: string | undefined) {
     refresh()
   }, [refresh])
 
+  // Turns a queued item into a fake TransactionWithRelations so it shows up
+  // in lists immediately, tagged so the UI can mark it "Pending sync".
+  function toPendingDisplay(item: QueuedTransaction): TransactionWithRelations {
+    return {
+      id: `pending:${item.localId}`,
+      wallet_id: item.walletId,
+      user_id: user?.id ?? '',
+      category_id: item.input.categoryId,
+      account_id: item.input.accountId,
+      to_account_id: null,
+      goal_id: null,
+      debt_id: null,
+      bill_id: null,
+      type: item.input.type,
+      amount: item.input.amount,
+      description: item.input.description || null,
+      date: item.input.date,
+      is_recurring: item.input.isRecurring,
+      created_at: item.queuedAt,
+      category: null,
+      account: null,
+      toAccount: null,
+      debt: null,
+      profile: user ? { id: user.id, full_name: null, email: user.email ?? null } : null,
+    }
+  }
+
+  const transactionsWithPending = [...pending.map(toPendingDisplay), ...transactions]
+
   async function addTransaction(input: NewTransaction) {
     if (!walletId || !user) return { error: 'No wallet selected' }
+
+    if (!navigator.onLine) {
+      enqueueTransaction(walletId, input)
+      setPending(getQueueForWallet(walletId))
+      return { error: null }
+    }
 
     const { error: insertError } = await supabase.from('transactions').insert({
       wallet_id: walletId,
@@ -85,9 +135,42 @@ export function useTransactions(walletId: string | undefined) {
       is_recurring: input.isRecurring,
     })
 
-    if (insertError) return { error: insertError.message }
+    if (insertError) {
+      // Covers the case where navigator.onLine lied (some browsers report
+      // online even on a dead connection) — fall back to queueing instead
+      // of losing what the user typed.
+      enqueueTransaction(walletId, input)
+      setPending(getQueueForWallet(walletId))
+      return { error: null }
+    }
+
     await refresh()
     return { error: null }
+  }
+
+  async function syncPending() {
+    if (!walletId || !user || !navigator.onLine) return
+
+    const queue = getQueueForWallet(walletId)
+    for (const item of queue) {
+      const { error: insertError } = await supabase.from('transactions').insert({
+        wallet_id: walletId,
+        user_id: user.id,
+        category_id: item.input.categoryId,
+        account_id: item.input.accountId,
+        type: item.input.type,
+        amount: item.input.amount,
+        description: item.input.description || null,
+        date: item.input.date,
+        is_recurring: item.input.isRecurring,
+      })
+
+      // Only remove from the queue on success — leave failures queued to
+      // retry next time (e.g. connection drops mid-sync).
+      if (!insertError) removeFromQueue(item.localId)
+    }
+
+    await refresh()
   }
 
   async function updateTransaction(id: string, input: NewTransaction) {
@@ -156,7 +239,6 @@ export function useTransactions(walletId: string | undefined) {
     await refresh()
     return { error: null }
   }
-
     // Balance corrections use the same untracked-counterpart pattern as goal
   // and debt contributions: one side is a real account, the other is left
   // null. We deliberately don't know whether the gap was forgotten income or
@@ -193,6 +275,18 @@ export function useTransactions(walletId: string | undefined) {
   }
 
 
-
-  return { transactions, loading, error, refresh, addTransaction, updateTransaction, addTransfer, deleteTransaction, updateTransfer, adjustBalance }
+  return {
+    transactions: transactionsWithPending,
+    loading,
+    error,
+    refresh,
+    addTransaction,
+    updateTransaction,
+    addTransfer,
+    updateTransfer,
+    adjustBalance,
+    deleteTransaction,
+    syncPending,
+    hasPending: pending.length > 0,
+  }
 }
