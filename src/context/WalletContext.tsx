@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { saveCache, loadCache } from '@/lib/offlineCache'
 import type { WalletWithRole } from '@/types'
 
 const ACTIVE_WALLET_KEY = 'ledger:active-wallet-id'
@@ -39,6 +40,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
 
     setError(null)
+    const cacheKey = `wallets:${user.id}`
 
     const { data, error: fetchError } = await supabase
       .from('wallets')
@@ -46,7 +48,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       .order('created_at', { ascending: true })
 
     if (fetchError) {
-      setError(fetchError.message)
+      // Likely offline — fall back to the last known list instead of
+      // wiping the screen, so the transaction form still has options.
+      const cached = loadCache<WalletWithRole[]>(cacheKey)
+      if (cached) {
+        setWallets(cached)
+        setError(null)
+      } else {
+        setError(fetchError.message)
+      }
       setLoading(false)
       return
     }
@@ -66,6 +76,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     })
 
     setWallets(withRole)
+    saveCache(cacheKey, withRole)
 
     setCurrentWalletIdState((prev) => {
       const stored = prev ?? localStorage.getItem(ACTIVE_WALLET_KEY)
