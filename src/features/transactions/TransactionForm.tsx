@@ -78,6 +78,11 @@ export function TransactionForm({
       return
     }
 
+    if (!accountId) {
+      setError('Select an account for this transaction.')
+      return
+    }
+
     setIsSubmitting(true)
 
     const result = await onSubmit({
@@ -177,15 +182,15 @@ export function TransactionForm({
         }))}
       />
 
-      {/* Account */}
+     {/* Account */}
       {accounts.length > 0 ? (
         <SelectPicker
-          label="Account"
+          label="Account *"
           value={accountId}
           onChange={setAccountId}
           modalTitle="Select account"
-          placeholder="No account"
-          noSelectionLabel="No account"
+          placeholder="Select account"
+          noSelectionLabel="Select account"
           searchPlaceholder="Search accounts..."
           emptyLabel="No accounts found"
           options={accounts.map((account) => {
@@ -204,7 +209,16 @@ export function TransactionForm({
             }
           })}
         />
-      ) : null}
+      ) : (
+        <div className="rounded-lg bg-brick-soft px-3.5 py-3">
+          <p className="text-sm font-medium text-brick">
+            No account available
+          </p>
+          <p className="mt-0.5 text-xs text-brick">
+            Create an account before adding a transaction.
+          </p>
+        </div>
+      )}
 
       {/* Date */}
       <DatePicker
