@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { saveCache, loadCache } from '@/lib/offlineCache'
 import type { Account } from '@/types'
 import type { AccountProviderId } from '@/lib/accountProviders'
 
@@ -22,13 +23,23 @@ export function useAccounts(walletId: string | undefined) {
     }
 
     setLoading(true)
-    const { data } = await supabase
+    const cacheKey = `accounts:${walletId}`
+
+    const { data, error } = await supabase
       .from('accounts')
       .select('*')
       .eq('wallet_id', walletId)
       .order('created_at', { ascending: true })
 
+    if (error) {
+      const cached = loadCache<Account[]>(cacheKey)
+      setAccounts(cached ?? [])
+      setLoading(false)
+      return
+    }
+
     setAccounts(data ?? [])
+    saveCache(cacheKey, data ?? [])
     setLoading(false)
   }, [walletId])
 
