@@ -9,6 +9,7 @@ import {
   ArrowRightLeft,
   Target,
   HandCoins,
+  Clock,
   SlidersHorizontal,
   X,
   ChevronDown,
@@ -409,6 +410,8 @@ useEffect(() => {
     event: React.PointerEvent<HTMLDivElement>,
     transactionId: string
   ) {
+    if (transactionId.startsWith('pending:')) return
+
     if (
       event.pointerType === 'mouse' &&
       event.button !== 0
@@ -1045,6 +1048,9 @@ async function handleDelete(transaction: TransactionWithRelations) {
                             t.type ===
                             'transfer'
 
+                          const isPending =
+                            t.id.startsWith('pending:')
+
                           const isOpen =
                             openTransactionId ===
                             t.id
@@ -1060,8 +1066,10 @@ async function handleDelete(transaction: TransactionWithRelations) {
                                 ? -DELETE_ACTION_WIDTH
                                 : 0
 
+                            
+
                           return (
-                            <li
+                         <li
                               key={
                                 t.id
                               }
@@ -1071,10 +1079,10 @@ async function handleDelete(transaction: TransactionWithRelations) {
                                 0
                                   ? 'border-t border-line'
                                   : ''
-                              }`}
+                              } ${isPending ? 'opacity-70' : ''}`}
                             >
                               {/* Delete */}
-                              {isMine ? (
+                             {isMine && !isPending ? (
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1212,18 +1220,25 @@ async function handleDelete(transaction: TransactionWithRelations) {
                                     </p>
                                   )}
 
-                                  <div className="flex items-center gap-1.5 text-xs text-ink-muted">
-                                    <span className="truncate">
-                                      {t.debt
-                                        ? 'Debt'
-                                        : t.goal
-                                          ? 'Goal contribution'
-                                          : isTransfer
-                                            ? 'Transfer'
-                                            : t.category?.name || 'Uncategorized'}
-                                    </span>
+                                <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+                                    {isPending ? (
+                                      <span className="flex items-center gap-1 font-medium text-gold">
+                                        <Clock size={11} />
+                                        Pending sync
+                                      </span>
+                                    ) : (
+                                      <span className="truncate">
+                                        {t.debt
+                                          ? 'Debt'
+                                          : t.goal
+                                            ? 'Goal contribution'
+                                            : isTransfer
+                                              ? 'Transfer'
+                                              : t.category?.name || 'Uncategorized'}
+                                      </span>
+                                    )}
 
-                                    {t.is_recurring ? (
+                                    {t.is_recurring && !isPending ? (
                                       <span
                                         className="inline-flex shrink-0 items-center"
                                         title="Recurring transaction"
@@ -1262,7 +1277,7 @@ async function handleDelete(transaction: TransactionWithRelations) {
 
                                   {/* Desktop actions */}
                                   <div className="hidden items-center gap-1 sm:flex">
-                                    {t.is_recurring ? (
+                                                                        {t.is_recurring && !isPending ? (
                                       <button
                                         type="button"
                                         onClick={(
@@ -1293,6 +1308,26 @@ async function handleDelete(transaction: TransactionWithRelations) {
                                         />
                                       </button>
                                     ) : null}
+
+                                {isMine && !isPending ? (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        if (t.debt) {
+                                          setEditingDebtPayment(t)
+                                        } else if (isTransfer) {
+                                          if (t.account_id && t.to_account_id) setEditingTransfer(t)
+                                        } else {
+                                          setEditing(t)
+                                        }
+                                      }}
+                                      aria-label={t.debt ? 'Edit payment' : isTransfer ? 'Edit transfer' : 'Edit transaction'}
+                                      className="rounded-md p-1.5 text-ink-muted hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pine"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                  ) : null}
 
                                 {isMine ? (
                                     <button
