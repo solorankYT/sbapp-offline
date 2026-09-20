@@ -19,15 +19,16 @@ import { DatePicker } from '@/components/ui/DatePicker';
 
 export function TransferForm({
   accounts,
+  balances,
   defaultFromId,
   initial,
   onSubmit,
   onDone,
 }: {
   accounts: Account[]
+  balances: Record<string, number>
   defaultFromId?: string
   initial?: NewTransfer
-  submitLabel?: string
   onSubmit: (input: NewTransfer) => Promise<{ error: string | null }>
   onDone: () => void
 }) {
@@ -71,6 +72,10 @@ export function TransferForm({
     (account) => account.id === toAccountId,
   )
 
+  const fromBalance = fromAccountId
+  ? balances[fromAccountId] ?? 0
+  : 0
+
   function swapAccounts() {
     if (!fromAccountId || !toAccountId) return
 
@@ -98,6 +103,19 @@ export function TransferForm({
       setError('Choose two different accounts.')
       return
     }
+
+    if (parsedAmount > fromBalance) {
+        setError(
+          `Insufficient balance. ${fromAccount?.name ?? 'This account'} only has ${fromBalance.toLocaleString(
+            undefined,
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )} available.`,
+        )
+        return
+      }
 
     setIsSubmitting(true)
 
@@ -285,20 +303,29 @@ function AccountSelector({
       className="group flex w-full items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition hover:border-pine/30 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pine/40"
     >
       {account ? (
-        <>
-          <AccountBadge account={account} size={40} />
+          <>
+            <AccountBadge account={account} size={40} />
 
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-              {label}
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                {label}
+              </p>
 
-            <p className="mt-0.5 truncate text-sm font-semibold text-ink">
-              {account.name}
-            </p>
-          </div>
-        </>
-      ) : (
+              <p className="mt-0.5 truncate text-sm font-semibold text-ink">
+                {account.name}
+              </p>
+
+              <p className="mt-0.5 text-xs text-ink-muted">
+                {label === 'From'
+                  ? `${fromBalance.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })} available`
+                  : 'Receiving account'}
+              </p>
+            </div>
+          </>
+        ) :  (
         <div className="flex-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
             {label}
