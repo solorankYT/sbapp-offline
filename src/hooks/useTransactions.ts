@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -46,6 +46,8 @@ export function useTransactions(walletId: string | undefined) {
   const [pending, setPending] = useState<QueuedTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const syncingRef = useRef(false)
 
   const refresh = useCallback(async () => {
     if (!walletId) {
@@ -200,9 +202,15 @@ export function useTransactions(walletId: string | undefined) {
     return { error: null }
   }
 
-  async function syncPending() {
-    if (!walletId || !user || !navigator.onLine) return
+ async function syncPending() {
+  if (!walletId || !user || !navigator.onLine) return
 
+  // Prevent two sync operations from running at the same time.
+  if (syncingRef.current) return
+
+  syncingRef.current = true
+
+  try {
     const queue = getQueueForWallet(walletId)
 
     for (const item of queue) {
@@ -220,14 +228,18 @@ export function useTransactions(walletId: string | undefined) {
           is_recurring: item.input.isRecurring,
         })
 
-      // Only remove from queue after successful sync.
+      // Only remove after Supabase confirms the insert succeeded.
       if (!insertError) {
         removeFromQueue(item.localId)
       }
     }
 
+    // Refresh database data and update transaction cache.
     await refresh()
+  } finally {
+    syncingRef.current = false
   }
+}
 
   async function updateTransaction(
     id: string,
