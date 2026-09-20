@@ -1358,8 +1358,10 @@ async function handleDelete(transaction: TransactionWithRelations) {
                                     onPointerDown={(event) => {
                                       event.stopPropagation()
                                     }}
-                                   onClick={(event) => {
+                              onClick={(event) => {
                                     event.stopPropagation()
+
+                                    if (isPending) return
 
                                     setOpenTransactionId(null)
                                     setDraggingTransactionId(null)
