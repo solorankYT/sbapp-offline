@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { saveCache, loadCache } from '@/lib/offlineCache'
 import type { Category } from '@/types'
 
 export function useCategories(walletId: string | undefined) {
@@ -14,14 +15,24 @@ export function useCategories(walletId: string | undefined) {
     }
 
     setLoading(true)
-    const { data } = await supabase
+    const cacheKey = `categories:${walletId}`
+
+    const { data, error } = await supabase
       .from('categories')
       .select('*')
       .eq('wallet_id', walletId)
       .order('type', { ascending: false })
       .order('name', { ascending: true })
 
+    if (error) {
+      const cached = loadCache<Category[]>(cacheKey)
+      setCategories(cached ?? [])
+      setLoading(false)
+      return
+    }
+
     setCategories(data ?? [])
+    saveCache(cacheKey, data ?? [])
     setLoading(false)
   }, [walletId])
 
@@ -51,7 +62,7 @@ export function useCategories(walletId: string | undefined) {
     return { error: null }
   }
 
-    async function setCategoryBudget(id: string, budgetLimit: number | null) {
+  async function setCategoryBudget(id: string, budgetLimit: number | null) {
     const { error } = await supabase.from('categories').update({ budget_limit: budgetLimit }).eq('id', id)
     if (error) return { error: error.message }
     await refresh()
