@@ -39,6 +39,7 @@ import { TransferForm } from '@/features/accounts/TransferForm'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useDebts } from '@/hooks/useDebts'
 import { EditDebtPaymentForm } from '@/features/debts/EditDebtPaymentForm'
+import { useAccountBalances } from '@/hooks/useAccountBalances';
 
 type TypeFilter = 'all' | 'income' | 'expense' | 'transfer'
 
@@ -50,13 +51,13 @@ const TRANSACTIONS_PER_PAGE = 15
 export function TransactionList() {
   const { user } = useAuth()
 
-
-
   const {
     currentWallet,
     loading: walletLoading,
     wallets,
   } = useWallet()
+
+  const { balances } = useAccountBalances(currentWallet?.id)
 
   const { categories } = useCategories(currentWallet?.id)
   const { accounts } = useAccounts(currentWallet?.id)
@@ -1611,31 +1612,19 @@ async function handleDelete(transaction: TransactionWithRelations) {
         >
           <TransferForm
             accounts={accounts}
+            balances={balances}
             submitLabel="Save changes"
             initial={{
-              fromAccountId:
-                editingTransfer.account_id!,
-              toAccountId:
-                editingTransfer.to_account_id!,
-              amount:
-                editingTransfer.amount,
-              description:
-                editingTransfer.description ??
-                '',
-              date:
-                editingTransfer.date,
+              fromAccountId: editingTransfer.account_id!,
+              toAccountId: editingTransfer.to_account_id!,
+              amount: editingTransfer.amount,
+              description: editingTransfer.description ?? '',
+              date: editingTransfer.date,
             }}
             onSubmit={(input) =>
-              updateTransfer(
-                editingTransfer.id,
-                input
-              )
+              updateTransfer(editingTransfer.id, input)
             }
-            onDone={() =>
-              setEditingTransfer(
-                null
-              )
-            }
+            onDone={() => setEditingTransfer(null)}
           />
         </Modal>
       ) : null}

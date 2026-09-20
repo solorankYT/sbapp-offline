@@ -1,4 +1,3 @@
-
 import { useState, type FormEvent } from 'react'
 import {
   ArrowDown,
@@ -15,23 +14,25 @@ import { todayISO } from '@/lib/format'
 import { getProviderPreset } from '@/lib/accountProviders'
 import type { NewTransfer } from '@/hooks/useTransactions'
 import type { Account } from '@/types'
-import { DatePicker } from '@/components/ui/DatePicker';
+import { DatePicker } from '@/components/ui/DatePicker'
 
 export function TransferForm({
-  accounts,
-  balances,
-  defaultFromId,
-  initial,
-  onSubmit,
-  onDone,
-}: {
-  accounts: Account[]
-  balances: Record<string, number>
-  defaultFromId?: string
-  initial?: NewTransfer
-  onSubmit: (input: NewTransfer) => Promise<{ error: string | null }>
-  onDone: () => void
-}) {
+    accounts,
+    balances,
+    defaultFromId,
+    initial,
+    submitLabel,
+    onSubmit,
+    onDone,
+  }: {
+    accounts: Account[]
+    balances: Record<string, number>
+    defaultFromId?: string
+    initial?: NewTransfer
+    submitLabel?: string
+    onSubmit: (input: NewTransfer) => Promise<{ error: string | null }>
+    onDone: () => void
+  }) {
   const [fromAccountId, setFromAccountId] = useState(
     initial?.fromAccountId ??
       defaultFromId ??
@@ -72,15 +73,45 @@ export function TransferForm({
     (account) => account.id === toAccountId,
   )
 
-  const fromBalance = fromAccountId
-  ? balances[fromAccountId] ?? 0
-  : 0
+  /*
+   * Current balance of the selected source account.
+   */
+  const currentFromBalance = balances[fromAccountId] ?? 0
+
+  /*
+   * When editing an existing transfer, the original transfer
+   * is already included in the current balance.
+   *
+   * Example:
+   *
+   * Original transfer: ₱150
+   * Current balance:   ₱50
+   *
+   * Available when editing = ₱50 + ₱150 = ₱200
+   *
+   * For a new transfer, available balance is simply the
+   * current balance.
+   */
+  const availableFromBalance = initial
+    ? currentFromBalance +
+      (initial.fromAccountId === fromAccountId
+        ? initial.amount
+        : 0)
+    : currentFromBalance
+
+  function formatBalance(value: number) {
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
 
   function swapAccounts() {
     if (!fromAccountId || !toAccountId) return
 
     setFromAccountId(toAccountId)
     setToAccountId(fromAccountId)
+    setError(null)
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -104,18 +135,14 @@ export function TransferForm({
       return
     }
 
-    if (parsedAmount > fromBalance) {
-        setError(
-          `Insufficient balance. ${fromAccount?.name ?? 'This account'} only has ${fromBalance.toLocaleString(
-            undefined,
-            {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            },
-          )} available.`,
-        )
-        return
-      }
+    if (parsedAmount > availableFromBalance) {
+      setError(
+        `Insufficient balance. ${
+          fromAccount?.name ?? 'This account'
+        } has ${formatBalance(availableFromBalance)} available.`,
+      )
+      return
+    }
 
     setIsSubmitting(true)
 
@@ -154,6 +181,7 @@ export function TransferForm({
       }
     }
 
+    setError(null)
     setSelecting(null)
   }
 
@@ -166,6 +194,7 @@ export function TransferForm({
             <h3 className="text-sm font-semibold text-ink">
               Transfer between
             </h3>
+
             <p className="mt-0.5 text-xs text-ink-muted">
               Choose where the money is coming from and going to.
             </p>
@@ -175,6 +204,7 @@ export function TransferForm({
             <AccountSelector
               label="From"
               account={fromAccount}
+              balance={currentFromBalance}
               onClick={() => setSelecting('from')}
             />
 
@@ -210,8 +240,29 @@ export function TransferForm({
             required
             autoFocus
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value)
+              setError(null)
+            }}
           />
+
+          {fromAccount ? (
+            <div className="mt-2 flex items-center justify-between text-xs">
+              <span className="text-ink-muted">
+                Available balance
+              </span>
+
+              <span
+                className={
+                  availableFromBalance < 0
+                    ? 'font-medium text-brick'
+                    : 'font-medium text-ink'
+                }
+              >
+                {formatBalance(availableFromBalance)}
+              </span>
+            </div>
+          ) : null}
         </section>
 
         {/* Optional details */}
@@ -224,14 +275,11 @@ export function TransferForm({
             onChange={(e) => setDescription(e.target.value)}
           />
 
-          
           <DatePicker
             label="Date"
             value={date}
             onChange={setDate}
           />
-
-
         </section>
 
         {/* Error */}
@@ -255,19 +303,20 @@ export function TransferForm({
         ) : null}
 
         {/* Primary action */}
-        <Button
-          type="submit"
-          isLoading={isSubmitting}
-          className="w-full"
-        >
-          Transfer
-        </Button>
+     <Button
+        type="submit"
+        isLoading={isSubmitting}
+        className="w-full"
+      >
+        {submitLabel ?? (initial ? 'Save changes' : 'Transfer')}
+      </Button>
       </form>
 
       {/* Account picker */}
       {selecting ? (
         <AccountPicker
           accounts={accounts}
+          balances={balances}
           selecting={selecting}
           selectedId={
             selecting === 'from'
@@ -290,10 +339,12 @@ export function TransferForm({
 function AccountSelector({
   label,
   account,
+  balance,
   onClick,
 }: {
   label: string
   account?: Account
+  balance?: number
   onClick: () => void
 }) {
   return (
@@ -303,29 +354,30 @@ function AccountSelector({
       className="group flex w-full items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition hover:border-pine/30 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pine/40"
     >
       {account ? (
-          <>
-            <AccountBadge account={account} size={40} />
+        <>
+          <AccountBadge account={account} size={40} />
 
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                {label}
-              </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+              {label}
+            </p>
 
-              <p className="mt-0.5 truncate text-sm font-semibold text-ink">
-                {account.name}
-              </p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-ink">
+              {account.name}
+            </p>
 
+            {label === 'From' && balance !== undefined ? (
               <p className="mt-0.5 text-xs text-ink-muted">
-                {label === 'From'
-                  ? `${fromBalance.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })} available`
-                  : 'Receiving account'}
+                {balance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{' '}
+                available
               </p>
-            </div>
-          </>
-        ) :  (
+            ) : null}
+          </div>
+        </>
+      ) : (
         <div className="flex-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
             {label}
@@ -400,6 +452,7 @@ function TransferSummary({
 
 function AccountPicker({
   accounts,
+  balances,
   selecting,
   selectedId,
   excludedId,
@@ -407,6 +460,7 @@ function AccountPicker({
   onClose,
 }: {
   accounts: Account[]
+  balances: Record<string, number>
   selecting: 'from' | 'to'
   selectedId: string
   excludedId: string
@@ -488,6 +542,9 @@ function AccountPicker({
             const selected =
               account.id === selectedId
 
+            const balance =
+              balances[account.id] ?? 0
+
             return (
               <button
                 key={account.id}
@@ -512,6 +569,16 @@ function AccountPicker({
                   <p className="text-xs text-ink-muted">
                     {preset.label}
                   </p>
+
+                  {selecting === 'from' ? (
+                    <p className="mt-0.5 text-xs font-medium text-ink">
+                      {balance.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{' '}
+                      available
+                    </p>
+                  ) : null}
                 </div>
 
                 {selected ? (

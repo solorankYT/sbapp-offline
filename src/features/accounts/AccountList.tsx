@@ -362,7 +362,7 @@ export function AccountList() {
 
       {transferring ? (
         <Modal title="Transfer money" onClose={() => setTransferring(null)}>
-            <TransferForm
+          <TransferForm
             accounts={accounts}
             balances={balances}
             defaultFromId={transferring.fromId}
