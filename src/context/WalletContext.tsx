@@ -1,4 +1,11 @@
-import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { saveCache, loadCache } from '@/lib/offlineCache'
@@ -14,7 +21,11 @@ interface WalletContextValue {
   setCurrentWalletId: (id: string) => void
   refresh: () => Promise<void>
   createWallet: (name: string, description?: string) => Promise<{ error: string | null }>
-  renameWallet: (id: string, name: string, description?: string) => Promise<{ error: string | null }>
+  renameWallet: (
+    id: string,
+    name: string,
+    description?: string,
+  ) => Promise<{ error: string | null }>
   deleteWallet: (id: string) => Promise<{ error: string | null }>
 }
 
@@ -22,6 +33,7 @@ export const WalletContext = createContext<WalletContextValue | undefined>(undef
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+
   const [wallets, setWallets] = useState<WalletWithRole[]>([])
   const [currentWalletId, setCurrentWalletIdState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,38 +44,119 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ACTIVE_WALLET_KEY, id)
   }, [])
 
+  /*
+   * Restore the active wallet from the available wallet list.
+   *
+   * Priority:
+   * 1. Existing React state
+   * 2. localStorage
+   * 3. First available wallet
+   */
+  const restoreActiveWallet = useCallback(
+    (walletList: WalletWithRole[]) => {
+      setCurrentWalletIdState((prev) => {
+        const stored = prev ?? localStorage.getItem(ACTIVE_WALLET_KEY)
+
+        const stillExists =
+          stored !== null &&
+          walletList.some((wallet) => wallet.id === stored)
+
+        if (stillExists) {
+          localStorage.setItem(ACTIVE_WALLET_KEY, stored)
+          return stored
+        }
+
+        const next = walletList[0]?.id ?? null
+
+        if (next) {
+          localStorage.setItem(ACTIVE_WALLET_KEY, next)
+        } else {
+          localStorage.removeItem(ACTIVE_WALLET_KEY)
+        }
+
+        return next
+      })
+    },
+    [],
+  )
+
   const refresh = useCallback(async () => {
     if (!user) {
       setWallets([])
+      setCurrentWalletIdState(null)
       setLoading(false)
       return
     }
 
     setError(null)
+
     const cacheKey = `wallets:${user.id}`
 
+    /*
+     * =========================================================
+     * 1. CACHE FIRST
+     * =========================================================
+     *
+     * Load cached wallets before making the Supabase request.
+     */
+    const cached = loadCache<WalletWithRole[]>(cacheKey)
+
+    if (cached) {
+      setWallets(cached)
+
+      // Restore the active wallet immediately from cached data.
+      restoreActiveWallet(cached)
+
+      // Cached data is enough for the UI to render.
+      setLoading(false)
+    }
+
+    /*
+     * =========================================================
+     * 2. FETCH FRESH DATA
+     * =========================================================
+     *
+     * This happens after the cache has already been applied.
+     */
     const { data, error: fetchError } = await supabase
       .from('wallets')
       .select('*, wallet_members(user_id, role)')
       .order('created_at', { ascending: true })
 
+    /*
+     * =========================================================
+     * 3. SUPABASE FAILED
+     * =========================================================
+     */
     if (fetchError) {
-      // Likely offline — fall back to the last known list instead of
-      // wiping the screen, so the transaction form still has options.
-      const cached = loadCache<WalletWithRole[]>(cacheKey)
       if (cached) {
-        setWallets(cached)
+        // Cached wallets are already displayed.
+        // Do not replace them or show a blocking error.
         setError(null)
-      } else {
-        setError(fetchError.message)
+        setLoading(false)
+        return
       }
+
+      // No cache exists, so there is nothing to display.
+      setError(fetchError.message)
       setLoading(false)
       return
     }
 
+    /*
+     * =========================================================
+     * 4. SUPABASE SUCCESS
+     * =========================================================
+     */
+
     const withRole: WalletWithRole[] = (data ?? []).map((w) => {
-      const members = w.wallet_members as { user_id: string; role: 'owner' | 'member' }[]
+      const members = w.wallet_members as {
+        user_id: string
+        role: 'owner' | 'member'
+      }[]
+
       const mine = members.find((m) => m.user_id === user.id)
+
       return {
         id: w.id,
         name: w.name,
@@ -75,19 +168,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
     })
 
+    // Replace cached UI with fresh data.
     setWallets(withRole)
+
+    // Save the fresh result for the next offline session.
     saveCache(cacheKey, withRole)
 
-    setCurrentWalletIdState((prev) => {
-      const stored = prev ?? localStorage.getItem(ACTIVE_WALLET_KEY)
-      const stillExists = withRole.some((w) => w.id === stored)
-      const next = stillExists ? stored! : (withRole[0]?.id ?? null)
-      if (next) localStorage.setItem(ACTIVE_WALLET_KEY, next)
-      return next
-    })
+    // Make sure the selected wallet still exists.
+    restoreActiveWallet(withRole)
 
+    setError(null)
     setLoading(false)
-  }, [user])
+  }, [user, restoreActiveWallet])
 
   useEffect(() => {
     setLoading(true)
@@ -99,38 +191,66 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     const { data, error: insertError } = await supabase
       .from('wallets')
-      .insert({ name, description: description || null, owner_id: user.id })
+      .insert({
+        name,
+        description: description || null,
+        owner_id: user.id,
+      })
       .select()
       .single()
 
-    if (insertError) return { error: insertError.message }
+    if (insertError) {
+      return { error: insertError.message }
+    }
 
     await refresh()
-    if (data) setCurrentWalletId(data.id)
+
+    if (data) {
+      setCurrentWalletId(data.id)
+    }
+
     return { error: null }
   }
 
-  async function renameWallet(id: string, name: string, description?: string) {
+  async function renameWallet(
+    id: string,
+    name: string,
+    description?: string,
+  ) {
     const { error: updateError } = await supabase
       .from('wallets')
-      .update({ name, description: description || null })
+      .update({
+        name,
+        description: description || null,
+      })
       .eq('id', id)
 
-    if (updateError) return { error: updateError.message }
+    if (updateError) {
+      return { error: updateError.message }
+    }
 
     await refresh()
+
     return { error: null }
   }
 
   async function deleteWallet(id: string) {
-    const { error: deleteError } = await supabase.from('wallets').delete().eq('id', id)
-    if (deleteError) return { error: deleteError.message }
+    const { error: deleteError } = await supabase
+      .from('wallets')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      return { error: deleteError.message }
+    }
 
     if (currentWalletId === id) {
       localStorage.removeItem(ACTIVE_WALLET_KEY)
       setCurrentWalletIdState(null)
     }
+
     await refresh()
+
     return { error: null }
   }
 
@@ -151,5 +271,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     deleteWallet,
   }
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+  return (
+    <WalletContext.Provider value={value}>
+      {children}
+    </WalletContext.Provider>
+  )
 }
