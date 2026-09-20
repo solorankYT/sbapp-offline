@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileNav } from '@/components/layout/MobileNav'
@@ -8,13 +8,19 @@ import { useWallet } from '@/hooks/useWallet'
 import { useCategories } from '@/hooks/useCategories'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactions } from '@/hooks/useTransactions'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 
 export function AppLayout() {
   const [quickAddOpen, setQuickAddOpen] = useState(false)
   const { currentWallet } = useWallet()
   const { categories } = useCategories(currentWallet?.id)
   const { accounts } = useAccounts(currentWallet?.id)
-  const { addTransaction } = useTransactions(currentWallet?.id)
+  const { addTransaction, syncPending } = useTransactions(currentWallet?.id)
+  const isOnline = useOnlineStatus()
+
+  useEffect(() => {
+    if (isOnline) syncPending()
+  }, [isOnline])
 
   return (
     <div className="flex min-h-screen bg-paper">
