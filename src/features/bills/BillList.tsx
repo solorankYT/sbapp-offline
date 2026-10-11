@@ -642,26 +642,24 @@ function SwipeableBill({
       {/* Delete action                                                     */}
       {/* ---------------------------------------------------------------- */}
 
-      <div className="absolute inset-y-0 right-0 w-[82px] overflow-hidden rounded-r-[var(--radius-card)] bg-brick">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onDelete()
-          }}
-          className="flex h-full w-full flex-col items-center justify-center gap-1 text-white transition-opacity hover:opacity-90 active:opacity-75"
-          aria-label={`Delete ${bill.name}`}
-        >
-          <Trash2
-            size={19}
-            strokeWidth={2}
-          />
-
-          <span className="text-[11px] font-semibold">
-            Delete
-          </span>
-        </button>
-      </div>
+     {!isPaid && (
+        <div className="absolute inset-y-0 right-0 w-[82px] overflow-hidden rounded-r-[var(--radius-card)] bg-brick">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onDelete()
+            }}
+            className="flex h-full w-full flex-col items-center justify-center gap-1 text-white transition-opacity hover:opacity-90 active:opacity-75"
+            aria-label={`Delete ${bill.name}`}
+          >
+            <Trash2 size={19} strokeWidth={2} />
+            <span className="text-[11px] font-semibold">
+              Delete
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* ---------------------------------------------------------------- */}
       {/* Bill card                                                         */}
